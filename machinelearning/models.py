@@ -37,7 +37,7 @@ class PerceptronModel(Module):
         """
         super(PerceptronModel, self).__init__()
         
-        "*** YOUR CODE HERE ***"
+        self.w = Parameter(ones((1, dimensions)))
         
 
     def get_weights(self):
@@ -56,7 +56,7 @@ class PerceptronModel(Module):
 
         The pytorch function `tensordot` may be helpful here.
         """
-        "*** YOUR CODE HERE ***"
+        return matmul(x, self.w.t()).reshape(1)
         
 
     def get_prediction(self, x):
@@ -65,7 +65,7 @@ class PerceptronModel(Module):
 
         Returns: 1 or -1
         """
-        "*** YOUR CODE HERE ***"
+        return 1 if self.run(x).item() >= 0 else -1
 
 
 
@@ -80,7 +80,16 @@ class PerceptronModel(Module):
         """        
         with no_grad():
             dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
-            "*** YOUR CODE HERE ***"
+            converged = False
+            while not converged:
+                converged = True
+                for sample in dataloader:
+                    x = sample["x"]
+                    y = int(sample["label"].item())
+                    pred = self.get_prediction(x)
+                    if pred != y:
+                        self.w += y * x
+                        converged = False
 
 
 
@@ -92,8 +101,10 @@ class RegressionModel(Module):
     """
     def __init__(self):
         # Initialize your model parameters here
-        "*** YOUR CODE HERE ***"
         super().__init__()
+        self.layer1 = Linear(1, 64)
+        self.layer2 = Linear(64, 64)
+        self.output_layer = Linear(64, 1)
 
 
 
@@ -106,7 +117,9 @@ class RegressionModel(Module):
         Returns:
             A node with shape (batch_size x 1) containing predicted y-values
         """
-        "*** YOUR CODE HERE ***"
+        hidden = relu(self.layer1(x))
+        hidden = relu(self.layer2(hidden))
+        return self.output_layer(hidden)
 
     
     def get_loss(self, x, y):
@@ -119,7 +132,7 @@ class RegressionModel(Module):
                 to be used for training
         Returns: a tensor of size 1 containing the loss
         """
-        "*** YOUR CODE HERE ***"
+        return mse_loss(self(x), y)
  
         
 
@@ -137,7 +150,24 @@ class RegressionModel(Module):
             dataset: a PyTorch dataset object containing data to be trained on
             
         """
-        "*** YOUR CODE HERE ***"
+        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        optimizer = optim.Adam(self.parameters(), lr=0.01)
+        target_loss = 0.015
+        max_epochs = 2000
+
+        for _ in range(max_epochs):
+            for sample in dataloader:
+                x = sample["x"]
+                y = sample["label"]
+                optimizer.zero_grad()
+                loss = self.get_loss(x, y)
+                loss.backward()
+                optimizer.step()
+
+            full_x = torch.tensor(dataset.x, dtype=torch.float32)
+            full_y = torch.tensor(dataset.y, dtype=torch.float32)
+            if self.get_loss(full_x, full_y).item() <= target_loss:
+                break
 
             
 
