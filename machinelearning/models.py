@@ -196,10 +196,9 @@ class DigitClassificationModel(Module):
         super().__init__()
         input_size = 28 * 28
         output_size = 10
-        "*** YOUR CODE HERE ***"
-
-
-
+        self.layer1 = Linear(input_size, 256)
+        self.layer2 = Linear(256, 128)
+        self.output_layer = Linear(128, output_size)
 
     def run(self, x):
         """
@@ -215,10 +214,10 @@ class DigitClassificationModel(Module):
             A node with shape (batch_size x 10) containing predicted scores
                 (also called logits)
         """
-        """ YOUR CODE HERE """
-
- 
-
+        hidden = relu(self.layer1(x))
+        hidden = relu(self.layer2(hidden))
+        return self.output_layer(hidden)
+        
     def get_loss(self, x, y):
         """
         Computes the loss for a batch of examples.
@@ -232,18 +231,28 @@ class DigitClassificationModel(Module):
             y: a node with shape (batch_size x 10)
         Returns: a loss tensor
         """
-        """ YOUR CODE HERE """
-
+        return cross_entropy(self.run(x), y)
     
-        
-
     def train(self, dataset):
         """
         Trains the model.
         """
-        """ YOUR CODE HERE """
+        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        optimizer = optim.Adam(self.parameters(), lr=0.001)
+        target_accuracy = 0.975
 
+        while True:
+            for sample in dataloader:
+                x = sample["x"]
+                y = sample["label"]
+                optimizer.zero_grad()
+                loss = self.get_loss(x, y)
+                loss.backward()
+                optimizer.step()
 
+            val_accuracy = dataset.get_validation_accuracy()
+            if val_accuracy >= target_accuracy:
+                break
 
 class LanguageIDModel(Module):
     """
