@@ -272,6 +272,12 @@ class LanguageIDModel(Module):
         super(LanguageIDModel, self).__init__()
         "*** YOUR CODE HERE ***"
 
+        self.hidden_size = 256
+
+        self.char_layer = Linear(self.num_chars, self.hidden_size)
+        self.hidden_layer = Linear(self.hidden_size, self.hidden_size)
+        self.output_layer = Linear(self.hidden_size, len(self.languages))
+
 
     def run(self, xs):
         """
@@ -304,6 +310,14 @@ class LanguageIDModel(Module):
         """
         "*** YOUR CODE HERE ***"
 
+        h = relu(self.char_layer(xs[0]))
+
+        for x in xs[1:]:
+            h = relu(self.char_layer(x) + self.hidden_layer(h))
+
+        return self.output_layer(h)
+
+
     
     def get_loss(self, xs, y):
         """
@@ -320,7 +334,7 @@ class LanguageIDModel(Module):
         Returns: a loss node
         """
         "*** YOUR CODE HERE ***"
-        
+        return cross_entropy(self.run(xs), y)
 
     def train(self, dataset):
         """
@@ -337,6 +351,24 @@ class LanguageIDModel(Module):
         For more information, look at the pytorch documentation of torch.movedim()
         """
         "*** YOUR CODE HERE ***"
+
+        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        optimizer = optim.Adam(self.parameters(), lr=0.005)
+        target_accuracy = 0.83
+        max_epochs = 25
+
+        for _ in range(max_epochs):
+            for sample in dataloader:
+                x = movedim(sample["x"], 0, 1)
+                y = sample["label"]
+
+                optimizer.zero_grad()
+                loss = self.get_loss(x, y)
+                loss.backward()
+                optimizer.step()
+
+            if dataset.get_validation_accuracy() >= target_accuracy:
+                break
 
         
 
