@@ -1,4 +1,5 @@
 from torch import no_grad, stack
+from torch import nn
 from torch.utils.data import DataLoader
 from torch.nn import Module
 
@@ -262,6 +263,42 @@ class LanguageIDModel(Module):
         self.languages = ["English", "Spanish", "Finnish", "Dutch", "Polish"]
         super(LanguageIDModel, self).__init__()
         "*** YOUR CODE HERE ***"
+        self.hidden_size = 512          # smaller because bidirectional doubles it
+        self.num_layers = 1
+        self.dropout_rate = 0.4         # slightly higher regularization
+
+        # Bidirectional GRU – captures context from both directions
+        self.gru = nn.GRU(
+            input_size=self.num_chars,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            batch_first=False,
+            dropout=self.dropout_rate if self.num_layers > 1 else 0,
+            bidirectional=True           # <-- key change
+        )
+
+        # Deeper classifier with three layers
+        self.dropout = torch.nn.Dropout(self.dropout_rate)
+        self.fc1 = torch.nn.Linear(self.hidden_size * 2, 256)   # *2 because bidirectional
+        self.fc2 = torch.nn.Linear(256, 128)
+        self.fc3 = torch.nn.Linear(128, len(self.languages))
+
+        # Weight initialization (same as before)
+        for name, param in self.gru.named_parameters():
+            if 'weight_ih' in name:
+                torch.nn.init.xavier_uniform_(param)
+            elif 'weight_hh' in name:
+                torch.nn.init.orthogonal_(param)
+            elif 'bias' in name:
+                torch.nn.init.zeros_(param)
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.zeros_(self.fc1.bias)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+        torch.nn.init.zeros_(self.fc2.bias)
+        torch.nn.init.xavier_uniform_(self.fc3.weight)
+        torch.nn.init.zeros_(self.fc3.bias)
+
+
 
 
     def run(self, xs):
@@ -294,8 +331,17 @@ class LanguageIDModel(Module):
                 (also called logits)
         """
         "*** YOUR CODE HERE ***"
+        if isinstance(xs, list):
+            xs = torch.stack(xs, dim=0)          # (L, batch, num_chars)
+        # Now xs is (L, batch, num_chars) – perfect for batch_first=False
+        output, _ = self.gru(xs)                 # (L, batch, hidden*2)
+        last_output = output[-1]                 # (batch, hidden*2)
+        h = self.dropout(torch.relu(self.fc1(last_output)))
+        h = self.dropout(torch.relu(self.fc2(h)))
+        return self.fc3(h)
 
-    
+
+
     def get_loss(self, xs, y):
         """
         Computes the loss for a batch of examples.
@@ -311,7 +357,9 @@ class LanguageIDModel(Module):
         Returns: a loss node
         """
         "*** YOUR CODE HERE ***"
-        
+        logits = self.run(xs)
+        y_indices = torch.argmax(y, dim=1)
+        return torch.nn.functional.cross_entropy(logits, y_indices)
 
     def train(self, dataset):
         """
@@ -328,6 +376,32 @@ class LanguageIDModel(Module):
         For more information, look at the pytorch documentation of torch.movedim()
         """
         "*** YOUR CODE HERE ***"
+        dataloader = DataLoader(dataset, batch_size=128, shuffle=True)   # increased batch size
+        optimizer = optim.Adam(self.parameters(), lr=0.001, weight_decay=1e-5)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
+        num_epochs = 20    # keep under 20 as requested
+        
+        for epoch in range(num_epochs):
+            total_loss = 0
+            for i, sample in enumerate(dataloader):
+                x = sample["x"]
+                y = sample["label"]
+                x = torch.movedim(x, 1, 0)
+                
+                optimizer.zero_grad()
+                loss = self.get_loss(x, y)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)   # gradient clipping
+                optimizer.step()
+                
+                total_loss += loss.item()
+                if i % 50 == 0:
+                    print(f"Epoch {epoch}, Batch {i}, Loss: {loss.item():.4f}")
+            
+            avg_loss = total_loss / len(dataloader)
+            print(f"Epoch {epoch} DONE, Avg Loss: {avg_loss:.4f}")
+            scheduler.step(avg_loss)
+
 
         
 
@@ -346,8 +420,17 @@ def Convolve(input: tensor, weight: tensor):
     """
     input_tensor_dimensions = input.shape
     weight_dimensions = weight.shape
-    Output_Tensor = tensor(())
+    Output_Tensor = torch.tensor(())
     "*** YOUR CODE HERE ***"
+    output_height = input_tensor_dimensions[0] - weight_dimensions[0] + 1
+    output_width = input_tensor_dimensions[1] - weight_dimensions[1] + 1
+    Output_Tensor = torch.zeros((output_height, output_width))
+    for i in range(output_height):
+        for j in range(output_width):
+            sub_tensor = input[i:i+weight_dimensions[0], j:j+weight_dimensions[1]]
+            Output_Tensor[i, j] = torch.tensordot(sub_tensor, weight, dims=2)
+
+            
 
     
     "*** End Code ***"
