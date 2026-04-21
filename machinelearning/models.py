@@ -272,40 +272,18 @@ class LanguageIDModel(Module):
         self.languages = ["English", "Spanish", "Finnish", "Dutch", "Polish"]
         super(LanguageIDModel, self).__init__()
         "*** YOUR CODE HERE ***"
-        self.hidden_size = 512          # smaller because bidirectional doubles it
+        self.hidden_size = 128          # smaller because bidirectional doubles it
         self.num_layers = 1
         self.dropout_rate = 0.4         # slightly higher regularization
 
-        # Bidirectional GRU – captures context from both directions
         self.gru = nn.GRU(
             input_size=self.num_chars,
             hidden_size=self.hidden_size,
-            num_layers=self.num_layers,
-            batch_first=False,
-            dropout=self.dropout_rate if self.num_layers > 1 else 0,
-            bidirectional=True           # <-- key change
+            batch_first=False
         )
 
-        # Deeper classifier with three layers
-        self.dropout = torch.nn.Dropout(self.dropout_rate)
-        self.fc1 = torch.nn.Linear(self.hidden_size * 2, 256)   # *2 because bidirectional
-        self.fc2 = torch.nn.Linear(256, 128)
-        self.fc3 = torch.nn.Linear(128, len(self.languages))
+        self.fc = nn.Linear(self.hidden_size, len(self.languages))
 
-        # Weight initialization (same as before)
-        for name, param in self.gru.named_parameters():
-            if 'weight_ih' in name:
-                torch.nn.init.xavier_uniform_(param)
-            elif 'weight_hh' in name:
-                torch.nn.init.orthogonal_(param)
-            elif 'bias' in name:
-                torch.nn.init.zeros_(param)
-        torch.nn.init.xavier_uniform_(self.fc1.weight)
-        torch.nn.init.zeros_(self.fc1.bias)
-        torch.nn.init.xavier_uniform_(self.fc2.weight)
-        torch.nn.init.zeros_(self.fc2.bias)
-        torch.nn.init.xavier_uniform_(self.fc3.weight)
-        torch.nn.init.zeros_(self.fc3.bias)
 
 
 
@@ -341,13 +319,10 @@ class LanguageIDModel(Module):
         """
         "*** YOUR CODE HERE ***"
         if isinstance(xs, list):
-            xs = torch.stack(xs, dim=0)          # (L, batch, num_chars)
-        # Now xs is (L, batch, num_chars) – perfect for batch_first=False
-        output, _ = self.gru(xs)                 # (L, batch, hidden*2)
-        last_output = output[-1]                 # (batch, hidden*2)
-        h = self.dropout(torch.relu(self.fc1(last_output)))
-        h = self.dropout(torch.relu(self.fc2(h)))
-        return self.fc3(h)
+            xs = torch.stack(xs, dim=0)  
+        output, _ = self.gru(xs)        
+        last_output = output[-1]        
+        return self.fc(last_output)     
 
 
 
@@ -385,31 +360,30 @@ class LanguageIDModel(Module):
         For more information, look at the pytorch documentation of torch.movedim()
         """
         "*** YOUR CODE HERE ***"
-        dataloader = DataLoader(dataset, batch_size=128, shuffle=True)   # increased batch size
-        optimizer = optim.Adam(self.parameters(), lr=0.001, weight_decay=1e-5)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=2)
-        num_epochs = 20    # keep under 20 as requested
-        
+        dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+        optimizer = optim.Adam(self.parameters(), lr=0.005)
+
+        num_epochs = 10
+
         for epoch in range(num_epochs):
             total_loss = 0
-            for i, sample in enumerate(dataloader):
+
+            for sample in dataloader:
                 x = sample["x"]
                 y = sample["label"]
-                x = torch.movedim(x, 1, 0)
-                
+
+                # Convert to (L, batch, num_chars)
+                x = movedim(x, 1, 0)
+
                 optimizer.zero_grad()
                 loss = self.get_loss(x, y)
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)   # gradient clipping
                 optimizer.step()
-                
+
                 total_loss += loss.item()
-                if i % 50 == 0:
-                    print(f"Epoch {epoch}, Batch {i}, Loss: {loss.item():.4f}")
-            
+
             avg_loss = total_loss / len(dataloader)
-            print(f"Epoch {epoch} DONE, Avg Loss: {avg_loss:.4f}")
-            scheduler.step(avg_loss)
+            print(f"Epoch {epoch}, Loss: {avg_loss:.4f}")
 
 
         
