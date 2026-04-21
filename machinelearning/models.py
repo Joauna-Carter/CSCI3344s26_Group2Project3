@@ -1,5 +1,4 @@
 from torch import no_grad, stack
-from torch import nn
 from torch.utils.data import DataLoader
 from torch.nn import Module
 
@@ -276,13 +275,13 @@ class LanguageIDModel(Module):
         self.num_layers = 1
         self.dropout_rate = 0.4         # slightly higher regularization
 
-        self.gru = nn.GRU(
+        self.gru = torch.nn.GRU(
             input_size=self.num_chars,
             hidden_size=self.hidden_size,
             batch_first=False
         )
 
-        self.fc = nn.Linear(self.hidden_size, len(self.languages))
+        self.fc = torch.nn.Linear(self.hidden_size, len(self.languages))
 
 
 
